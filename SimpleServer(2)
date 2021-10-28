@@ -1,0 +1,50 @@
+using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+
+namespace SimpleSever
+{
+    class Program
+    {
+        static void clientRW(object obj)
+        {
+            Socket client = obj as Socket;
+            while (true)
+            {
+                byte[] redvBytes = new byte[1024];
+                int nRecv = client.Receive(redvBytes);
+                if (nRecv <= 0)
+                {
+                    client.Shutdown(SocketShutdown.Both);
+                    client.Close();
+                    break;
+
+                }
+                string txt = Encoding.UTF8.GetString(redvBytes, 0, nRecv);
+                Console.WriteLine(client.RemoteEndPoint.ToString() + ":" + txt);
+                byte[] sendBytes = Encoding.UTF8.GetBytes("서버:" + txt);
+                client.Send(sendBytes);
+            }
+        }
+        static void Main(string[] args)
+        {
+            Socket server = new Socket(AddressFamily.InterNetwork,
+                SocketType.Stream, ProtocolType.Tcp);
+            IPEndPoint endPiont = new IPEndPoint(IPAddress.Any, 5000);
+            server.Bind(endPiont);
+            server.Listen(10);
+            
+            while(true)
+            {
+                Console.WriteLine("Server: waiting connection request");
+                Socket client = server.Accept();
+                Thread clientTh = new Thread(clientRW);
+                clientTh.Start(client);
+
+                Console.WriteLine("Server: Client accepted");
+            }
+        }
+    }
+}
