@@ -1,0 +1,110 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Net;
+using System.Net.Sockets;
+
+namespace ASyncGulSimpleServer
+{
+    public partial class MultiChat : Form
+    {
+        Socket server;
+        IPAddress serverIPAddress;
+        Socket Client;
+        delegate void AppendTextDelegate(Control ctrl, string s);
+        AppendTextDelegate _textAppend;
+        public MultiChat()
+        {
+            InitializeComponent();
+            server = new Socket(AddressFamily.InterNetwork,
+                SocketType.Stream, ProtocolType.Tcp);
+            _textAppend = new AppendTextDelegate(AppendText);
+        }
+
+        void AppendText(Control ctrl, string s)
+        {
+            if (ctrl.InvokeRequired) ctrl.Invoke(_textAppend, ctrl, s);
+            else
+            {
+                string source = ctrl.Text;
+                ctrl.Text = source + Environment.NewLine + s;
+            }
+        }
+        private void btnStart_Click(object sender, EventArgs e)
+        {
+            int port;
+            if (!int.TryParse(txtPort.Text, out port))
+            { //port 입력 안함
+                txtPort.Focus();
+                txtPort.SelectAll();
+                return;
+            }
+            if (string.IsNullOrEmpty(txtAddress.Text))
+            {
+                serverIPAddress = IPAddress.Loopback;
+                txtAddress.Text = serverIPAddress.ToString();
+            }
+            else
+            {
+                serverIPAddress = IPAddress.Parse(txtAddress.Text);
+            }
+
+            IPEndPoint serverEP = new IPEndPoint(serverIPAddress, port);
+            server.Bind(serverEP);
+            server.Listen(10);
+            server.BeginAccept(AcceptCallback, null);
+        }
+
+        void AcceptCallback(IAsyncResult ar)
+        {
+            Client = server.EndAccept(ar);
+            server.BeginAccept(AcceptCallback, null);
+
+            AsyncObject obj = new AsyncObject(4096);
+            obj.workingSocket = Client;
+            Client.BeginReceive(obj.Buffer, 0, obj.BufferSize, 0, DataReceived, obj);
+        }
+
+        void DataReceived(IAsyncResult ar)
+        {
+            AsyncObject obj = ar.AsyncState as AsyncObject;
+            int received = obj.workingSocket.EndReceive(ar);
+            string text = Encoding.UTF8.GetString(obj.Buffer);
+            AppendText(txtHistory, text);
+            obj.clearBuffer();
+            obj.workingSocket.BeginReceive(obj.Buffer, 0, obj.BufferSize, 0,
+                DataReceived, obj);
+        }
+        private void btnSend_Click(object sender, EventArgs e)
+        {
+            if (!server.IsBound) return;
+            string text = txtSend.Text.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            if (!Client.IsBound) return;
+            byte[] bDts = Encoding.UTF8.GetBytes("server:" + text);
+            AppendText(txtHistory, "server:" + text);
+            Client.Send(bDts);
+            txtSend.Clear();
+        }
+
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            try
+            {
+                server.Close();
+            }
+            catch
+            { }
+        }
+    }
+}
